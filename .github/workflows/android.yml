@@ -42,7 +42,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest runners ship the Android SDK preinstalled (ANDROID_HOME +
+      # sdkmanager); the archived third-party setup action broke. Install the
+      # platform our Gradle files target.
+      - name: Install Android SDK platform 35
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Gradle build (debug APK)
         working-directory: android
