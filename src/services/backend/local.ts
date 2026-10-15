@@ -299,7 +299,9 @@ export class LocalBackend implements Backend {
   /** Final close (stop / leave): bank remaining window and end the session. */
   private closeSession(db: DB, room: ClassroomRow, session: SessionRow, endMs: number) {
     if (session.endedAtMs !== null) return
-    const cappedEnd = Math.min(endMs, session.origStartedAtMs + MAX_SESSION_SECONDS * 1000)
+    // never end before the start of the CURRENT accrual window — mirrors the
+    // server-side study_sessions_check guard (migration 0008)
+    const cappedEnd = Math.max(Math.min(endMs, session.origStartedAtMs + MAX_SESSION_SECONDS * 1000), session.startedAtMs)
     if (!session.pulsePaused) {
       this.haltSession(db, room, session, cappedEnd)
       session.pulsePaused = false // halt semantics are for live pauses only
