@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-cream font-rounded text-ink antialiased;
+  overscroll-behavior-y: none;
+}
+
+::selection {
+  background: rgba(215, 122, 74, 0.25);
+}
+
+/* subtle scrollbars that match the palette */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 99, 69, 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(139, 99, 69, 0.35);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 3D overlay labels must never trap pointer input meant for the canvas */
+.pointer-events-none,
+.pointer-events-none * {
+  pointer-events: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

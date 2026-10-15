@@ -1,0 +1,55 @@
+name: Android APK
+
+# Push to main (or run manually) → downloadable app-debug.apk artifact.
+# Add google-services.json at android/app/google-services.json to enable FCM push.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The web app needs its Supabase URL + publishable key baked in at build
+      # time — without them the APK silently runs in demo mode (no realtime,
+      # no shared Hall, no notifications). Set both as repo secrets:
+      # Settings → Secrets and variables → Actions → New repository secret.
+      - name: Write production env
+        run: |
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" > .env.production
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env.production
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Gradle build (debug APK)
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avhifocus-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

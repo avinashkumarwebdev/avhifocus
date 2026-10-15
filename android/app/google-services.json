@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "763890297267",
+    "project_id": "avhifocus",
+    "storage_bucket": "avhifocus.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:763890297267:android:ceeb6709657a0b207bc3c6",
+        "android_client_info": {
+          "package_name": "com.avhifocus.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9GHN9KATUOJgnRskk4z_EM1czqPPqRCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

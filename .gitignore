@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+.vercel
+dev-dist
+
+# Firebase admin SDK keys & local uploads — never commit private keys
+uploads/
+*-adminsdk-*.json
