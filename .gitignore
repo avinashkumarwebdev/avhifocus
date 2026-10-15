@@ -11,3 +11,5 @@ dev-dist
 # Firebase admin SDK keys & local uploads — never commit private keys
 uploads/
 *-adminsdk-*.json
+.cache/
+.npm/

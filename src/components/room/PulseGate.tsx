@@ -4,7 +4,7 @@ import { Button, ProgressRing } from '../ui'
 import { playPulseChime } from '../../lib/ambient'
 import { Hand, PauseCircle } from 'lucide-react'
 
-const GRACE_MS = 120_000
+const GRACE_MS = 180_000 // matches the server's 3-minute answer window
 
 /**
  * Integrity UI. Two states:

@@ -251,8 +251,11 @@ export class SupabaseBackend implements Backend {
   // ── integrity (anti-cheat) ────────────────────────────────────────────────
   async ackPulse(classroomId: string, _identity: Identity): Promise<void> {
     await this.ensureSession()
-    const { error } = await this.supabase.rpc('avhi_ack_pulse', { p_classroom_id: classroomId })
+    const { data, error } = await this.supabase.rpc('avhi_ack_pulse', { p_classroom_id: classroomId })
     if (error) this.rpcError(error)
+    if ((data as { too_late?: boolean } | null)?.too_late) {
+      throw new BackendError('TOO_LATE', 'Just missed it — the timer already paused ⏸ Tap Resume when you’re back, the gap won’t count.')
+    }
   }
 
   async resumeSession(classroomId: string, _identity: Identity): Promise<void> {
@@ -303,6 +306,29 @@ export class SupabaseBackend implements Backend {
       event: 'message',
       payload: { studentId: identity.id, displayName: identity.displayName, targetStudentId, text }
     })
+    // fire-and-forget: ask the server to push the note to a closed app too.
+    // A rejection (rate limit / older DB without 0007) must never fail the note itself.
+    void this.supabase
+      .rpc('avhi_send_message', { p_classroom_id: classroomId, p_target_student_id: targetStudentId, p_text: text })
+      .then(({ error }) => {
+        if (error && !error.message.includes('avhi_send_message')) {
+          console.info('[message push] skipped:', error.message)
+        }
+      })
+  }
+
+  /** Pass-guarded wipe of one student's data (migration 0007, anti-misuse tool). */
+  async pruneStudentData(classroomId: string, _identity: Identity, targetStudentId: string, pass: string): Promise<void> {
+    await this.ensureSession()
+    const { error } = await this.supabase.rpc('avhi_prune_student', {
+      p_classroom_id: classroomId,
+      p_target_student_id: targetStudentId,
+      p_pass: pass
+    })
+    if (error) {
+      if (error.message.includes('GUARDIAN_DENIED')) throw new BackendError('GUARDIAN_DENIED', 'Wrong pass — nothing was deleted.')
+      this.rpcError(error)
+    }
   }
 
   async setIntegrityMode(classroomId: string, _identity: Identity, mode: IntegrityMode): Promise<void> {

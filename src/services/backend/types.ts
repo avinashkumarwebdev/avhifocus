@@ -53,6 +53,13 @@ export interface Backend {
 
   /** Ephemeral preset check-in note to one classmate (never stored). */
   sendMessage(classroomId: string, identity: Identity, targetStudentId: string, text: string): Promise<void>
+
+  /**
+   * Guardian wipe — with the special 8-character pass, erase one student's
+   * data in this classroom: open+closed sessions, focus history, leaderboard
+   * scores, push subscriptions, and their bench (for misuse cases only).
+   */
+  pruneStudentData(classroomId: string, identity: Identity, targetStudentId: string, pass: string): Promise<void>
   /** Change the room's integrity level. */
   setIntegrityMode(classroomId: string, identity: Identity, mode: IntegrityMode): Promise<void>
 

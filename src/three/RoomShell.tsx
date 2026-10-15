@@ -184,6 +184,47 @@ export function RoomShell({ roomName }: { roomName: string }) {
       <mesh material={MAT.wall} position={[7.4, 2.5, 0]} receiveShadow rotation={[0, Math.PI / 2, 0]}>
         <boxGeometry args={[17.5, 5, 0.25]} />
       </mesh>
+      {/* back wall (with the classroom door) — closes the room so orbit views
+          can never land in the beige void */}
+      <mesh material={MAT.wall} position={[0, 2.5, 8.75]} receiveShadow>
+        <boxGeometry args={[15, 5, 0.25]} />
+      </mesh>
+      <group position={[3.6, 0, 8.58]}>
+        {/* door slab + frame */}
+        <mesh material={MAT.wood} position={[0, 1.15, 0]} castShadow>
+          <boxGeometry args={[1.1, 2.3, 0.08]} />
+        </mesh>
+        <mesh material={MAT.wallTrim} position={[-0.62, 1.18, -0.02]}>
+          <boxGeometry args={[0.1, 2.42, 0.14]} />
+        </mesh>
+        <mesh material={MAT.wallTrim} position={[0.62, 1.18, -0.02]}>
+          <boxGeometry args={[0.1, 2.42, 0.14]} />
+        </mesh>
+        <mesh material={MAT.wallTrim} position={[0, 2.42, -0.02]}>
+          <boxGeometry args={[1.34, 0.1, 0.14]} />
+        </mesh>
+        <mesh material={MAT.darkMetal} position={[0.38, 1.12, -0.06]}>
+          <sphereGeometry args={[0.045, 10, 10]} />
+        </mesh>
+        {/* little wall clock above the door */}
+        <mesh material={MAT.wallTrim} position={[0, 3.05, -0.02]}>
+          <cylinderGeometry args={[0.26, 0.26, 0.05, 24]} />
+        </mesh>
+        <mesh position={[0, 3.05, -0.055]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.21, 0.21, 0.03, 24]} />
+          <meshStandardMaterial color="#FDF8EC" roughness={0.7} />
+        </mesh>
+        <mesh material={MAT.darkMetal} position={[0, 3.12, -0.075]}>
+          <boxGeometry args={[0.025, 0.16, 0.012]} />
+        </mesh>
+        <mesh material={MAT.darkMetal} position={[0.055, 3.04, -0.075]} rotation={[0, 0, -0.9]}>
+          <boxGeometry args={[0.025, 0.12, 0.012]} />
+        </mesh>
+      </group>
+      {/* back-wall skirting */}
+      <mesh material={MAT.wallTrim} position={[0, 0.09, 8.6]}>
+        <boxGeometry args={[15, 0.18, 0.04]} />
+      </mesh>
       {/* skirting + top trim */}
       {([-8.45] as const).map((z) => (
         <mesh key={z} material={MAT.wallTrim} position={[0, 0.09, z + 0.16]}>

@@ -48,10 +48,12 @@ export const STALE_CLOSE_MS = 15 * 60_000
 /** Integrity: 2-hour continuous-session cap in balanced/strict rooms. */
 export const SESSION_CAP_MS = 2 * 3600 * 1000
 /** Time allowed to acknowledge a pulse before accrual halts. */
-export const PULSE_GRACE_MS = 120_000
+export const PULSE_GRACE_MS = 180_000
 /** Balanced/strict pulse spacing: 10–18 minutes, randomized server-side. */
 const PULSE_MIN_MS = 10 * 60_000
 const PULSE_SPREAD_MS = 8 * 60_000
+/** Guardian wipe pass — matches migration 0007 (never leave the repo undocumented). */
+export const GUARDIAN_PASS = 'Avhi9204'
 /** A sender may nudge the same classmate at most once per 10 minutes. */
 const NUDGE_RATE_LIMIT_MS = 10 * 60_000
 /** Anti-farming: at most 10 hours per UTC day counts toward the leaderboard. */
@@ -677,9 +679,10 @@ export class LocalBackend implements Backend {
     }
     const now = this.now()
     if (now > session.pulseDueAtMs + PULSE_GRACE_MS) {
-      // too late — the sweep above already halted; state is visible to caller
+      // too late — the sweep above already halted; tell the caller so the
+      // UI can explain what happened instead of looking like a dead button
       this.save(db)
-      return
+      throw new BackendError('TOO_LATE', 'Just missed it — the timer already paused ⏸ Tap Resume when you’re back, the gap won’t count.')
     }
     const pending = Object.values(db.pulses).find(
       (p) => p.sessionId === session.id && p.ackedAtMs === null && p.dueAtMs === session.pulseDueAtMs
@@ -795,6 +798,37 @@ export class LocalBackend implements Backend {
       targetStudentId,
       text
     })
+  }
+
+  /**
+   * Guardian wipe (demo backend parity): same special pass, same result —
+   * one student's session history is erased and their bench is freed.
+   */
+  async pruneStudentData(classroomId: string, identity: Identity, targetStudentId: string, pass: string): Promise<void> {
+    if (pass !== GUARDIAN_PASS) throw new BackendError('GUARDIAN_DENIED', 'Wrong pass — nothing was deleted.')
+    const db = this.load()
+    this.requireRoom(db, classroomId)
+    this.requireMembership(db, classroomId, identity.id)
+
+    const now = this.now()
+    for (const [id, s] of Object.entries(db.sessions)) {
+      if (s.classroomId === classroomId && s.studentId === targetStudentId) delete db.sessions[id]
+    }
+    for (const [id, seg] of Object.entries(db.segments)) {
+      if (seg.classroomId === classroomId && seg.studentId === targetStudentId) delete db.segments[id]
+    }
+    for (const [id, p] of Object.entries(db.pulses)) {
+      if (p.classroomId === classroomId && p.studentId === targetStudentId) delete db.pulses[id]
+    }
+    for (const m of Object.values(db.members)) {
+      if (m.classroomId === classroomId && m.studentId === targetStudentId && m.status === 'active') {
+        m.status = 'left'
+        m.leftAtMs = now
+        m.displayName = 'Removed student'
+      }
+    }
+    this.save(db)
+    this.emit(classroomId, { kind: 'room-changed' })
   }
 
   async setIntegrityMode(classroomId: string, identity: Identity, mode: IntegrityMode): Promise<void> {

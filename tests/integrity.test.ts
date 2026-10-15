@@ -101,15 +101,15 @@ describe('Integrity engine — presence pulses', () => {
     const me = makeIdentity(1)
     await w.a.joinClassroom({ code: room.joinCode }, me)
     await w.a.startStudying(room.id, me)
-    // present (heartbeating) but ignoring the pulse: due at +14m, grace +2m
+    // present (heartbeating) but ignoring the pulse: due at +14m, grace +3m
     await tick(w, room.id, me, 20 * M)
     const state = await w.a.getRoomState(room.id, owner)
     const view = state.members.find((m) => m.studentId === me.id)
     expect(view?.pulsePaused).toBe(true)
     await w.a.stopStudying(room.id, me)
-    // scores only focus[0 .. 16m] = 960s, not the full 20m (1200s)
-    expect(PULSE_GRACE_MS).toBe(120_000)
-    expect(await lbSeconds(w, room.id, owner, me.id)).toBe(960)
+    // scores only focus[0 .. 17m] = 1020s, not the full 20m (1200s)
+    expect(PULSE_GRACE_MS).toBe(180_000)
+    expect(await lbSeconds(w, room.id, owner, me.id)).toBe(1020)
   })
 
   it('resume opens a new window; the paused gap is excluded from the bank', async () => {
@@ -117,14 +117,14 @@ describe('Integrity engine — presence pulses', () => {
     const me = makeIdentity(1)
     await w.a.joinClassroom({ code: room.joinCode }, me)
     await w.a.startStudying(room.id, me)
-    await tick(w, room.id, me, 20 * M) // missed pulse → paused at +16m
+    await tick(w, room.id, me, 20 * M) // missed pulse → paused at +17m
     await w.a.getRoomState(room.id, me) // trigger sweep
     w.advance(5 * M)
     await w.a.resumeSession(room.id, me) // new window at +25m
-    await tick(w, room.id, me, 16 * M) // due at +39m, grace → paused again at +41m
+    await tick(w, room.id, me, 16 * M) // due at +39m, grace → paused again at +42m
     await w.a.stopStudying(room.id, me)
-    // banked: [0..16m] + [25m..41m] = 960 + 960 = 1920s; gap [16..25m] excluded
-    expect(await lbSeconds(w, room.id, owner, me.id)).toBe(1920)
+    // banked: [0..17m] halted + [25m..41m] at stop = 1020 + 960 = 1980s; gap excluded
+    expect(await lbSeconds(w, room.id, owner, me.id)).toBe(1980)
   })
 
   it('a too-late ack is rejected as verification (state flips to paused)', async () => {
@@ -132,8 +132,8 @@ describe('Integrity engine — presence pulses', () => {
     const me = makeIdentity(1)
     await w.a.joinClassroom({ code: room.joinCode }, me)
     await w.a.startStudying(room.id, me)
-    await tick(w, room.id, me, 17 * M) // overdue by 1 min
-    await w.a.ackPulse(room.id, me)
+    await tick(w, room.id, me, 19 * M) // overdue by 2 min (past the 3m window)
+    await w.a.ackPulse(room.id, me) // late ack can’t resurrect the window
     const state = await w.a.getRoomState(room.id, me)
     expect(state.members.find((m) => m.studentId === me.id)?.pulsePaused).toBe(true)
   })
@@ -169,14 +169,14 @@ describe('Integrity engine — presence pulses', () => {
     await expect(w.a.nudge(room.id, other, me.id)).rejects.toThrow(/already nudged/i)
     await expect(w.a.nudge(room.id, me, me.id)).rejects.toThrow(/yourself/i)
 
-    // me ignores the nudge: grace (2m) passes → paused
-    await tick(w, room.id, me, 3 * M)
+    // me ignores the nudge: grace (3m) passes → paused
+    await tick(w, room.id, me, 4 * M)
     const state = await w.a.getRoomState(room.id, owner)
     const view = state.members.find((m) => m.studentId === me.id)
     expect(view?.pulsePaused).toBe(true)
     await w.a.stopStudying(room.id, me)
-    // nudged at t0 due immediately → halted at +2m → 120s only
-    expect(await lbSeconds(w, room.id, owner, me.id)).toBe(120)
+    // nudged at t0 due immediately → halted at +3m → 180s only
+    expect(await lbSeconds(w, room.id, owner, me.id)).toBe(180)
   })
 
   it('self-pause freezes accrual immediately (strict-mode client signal)', async () => {

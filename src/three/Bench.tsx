@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
+import { VisibleHtml } from './VisibleHtml'
 import * as THREE from 'three'
 import type { MemberView } from '../types'
 import { StudentAvatar } from './StudentAvatar'
@@ -146,13 +146,7 @@ export function Bench({
       </group>
 
       {/* floating label (outside raycast group — display only) */}
-      <Html
-        position={[0, member ? 1.95 : 1.35, 0.4]}
-        center
-        zIndexRange={[30, 0]}
-        wrapperClass="pointer-events-none"
-        occlude={false}
-      >
+      <VisibleHtml position={[0, member ? 1.95 : 1.35, 0.4]} center occlude={false}>
         {member ? (
           <div
             className={`flex select-none flex-col items-center gap-0.5 whitespace-nowrap rounded-2xl px-3 py-1.5 text-center shadow-card backdrop-blur-sm transition-colors ${
@@ -184,7 +178,7 @@ export function Bench({
             Seat {seat} — open
           </div>
         )}
-      </Html>
+      </VisibleHtml>
     </group>
   )
 }

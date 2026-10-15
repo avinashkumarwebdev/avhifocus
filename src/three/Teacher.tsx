@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
+import { VisibleHtml } from './VisibleHtml'
 import * as THREE from 'three'
 import type { Phase } from '../types'
 
@@ -135,22 +135,9 @@ export function Teacher({ phase, reducedMotion }: { phase: Phase; reducedMotion:
         <mesh geometry={bookPageGeo} material={mats.page} position={[0, 0.005, 0]} />
       </group>
 
-      {/* floating label */}
-      {/*
-        transform anchors the div to world space (scales with zoom like the
-        real thing) and, critically, measures its size for the projector —
-        screen-space Html can mis-measure to fullscreen which greedily eats
-        all pointer events on mobile.
-      */}
-      <Html
-        position={[0, 2.12, 0]}
-        center
-        transform
-        distanceFactor={6}
-        zIndexRange={[30, 0]}
-        wrapperClass="pointer-events-none"
-        occlude={false}
-      >
+      {/* floating label — screen-space (never mirrored from any angle) and
+          auto-hidden the moment the anchor leaves the viewport */}
+      <VisibleHtml position={[0, 2.12, 0]} center occlude={false}>
         <div
           className={`flex select-none items-center gap-1.5 whitespace-nowrap rounded-2xl border-2 px-3 py-1.5 shadow-card backdrop-blur-sm ${
             isBreak ? 'border-sagedeep/50 bg-sage/25' : 'border-forest/60 bg-cream/95'
@@ -162,7 +149,7 @@ export function Teacher({ phase, reducedMotion }: { phase: Phase; reducedMotion:
             {isBreak ? 'stretch time, everyone' : 'keeping time · shhh'}
           </span>
         </div>
-      </Html>
+      </VisibleHtml>
     </group>
   )
 }

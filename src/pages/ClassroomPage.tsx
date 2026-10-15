@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import { App } from '@capacitor/app'
 import { useRoomSync } from '../hooks/useRoomSync'
 import { useServerNow } from '../hooks/useNow'
 import { useIdentityStore } from '../stores/identity'
@@ -52,6 +54,30 @@ export default function ClassroomPage() {
   useEffect(() => {
     if (room) setLastRoom({ id: room.id, name: room.name })
   }, [room, setLastRoom])
+
+  // Notification deep-link: /room/:id?ack=1(&back=1) — confirm the pending
+  // pulse as soon as the room loads, so a nudge can be answered in one tap.
+  // back=1 (notification shade flows only): park the app again right after.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const wantAck = searchParams.get('ack') === '1'
+  const wantPark = searchParams.get('back') === '1'
+  const ackTried = useRef(false)
+  useEffect(() => {
+    if (!wantAck || ackTried.current || sync.status !== 'ready' || !me) return
+    ackTried.current = true
+    void (async () => {
+      const hadPulse = me.pulseDueAtMs !== null && !me.pulsePaused
+      if (hadPulse && !sync.busy) {
+        await sync.ackPulse()
+        pushToast({ title: '✅ Verified — timer keeps counting', tone: 'success' })
+      }
+      setSearchParams({}, { replace: true })
+      if (hadPulse && wantPark && Capacitor.isNativePlatform()) {
+        window.setTimeout(() => void App.minimizeApp().catch(() => undefined), 900)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantAck, sync.status, me?.pulseDueAtMs])
 
   // Phase transition feedback + living tab title.
   const phase = room ? getCycleState(classroomCycle(room), nowMs).phase : 'focus'

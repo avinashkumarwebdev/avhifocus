@@ -4,6 +4,16 @@ import { getBackend, syncServerClock, type Backend } from '../services/backend'
 import { useIdentityStore } from '../stores/identity'
 import { isQuietHoursNow, useAppStore } from '../stores/app'
 import { showNativeNotification } from '../lib/notifications'
+import { setActiveRoomForActions, syncStudyNotifications } from '../lib/nativePush'
+
+function focusedLabel(startMs: number | null): string {
+  if (startMs === null) return 'Your timer'
+  const s = Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+  if (s < 60) return 'Under a minute'
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m} min`
+}
 
 export type RoomSyncStatus = 'loading' | 'ready' | 'error' | 'not-member'
 
@@ -271,6 +281,30 @@ export function useRoomSync(roomId: string | undefined): UseRoomSync {
   )
 
   const me = members.find((m) => m.studentId === identity?.id) ?? null
+
+  // ── notification shade mirror (native only; no-op on web) ───────────────
+  // Sticky non-swipeable session card + locally scheduled pulse alarms with
+  // reply actions, so checks can be answered without leaving other apps.
+  const meStatus = me?.status ?? 'idle'
+  const meDue = me?.pulseDueAtMs ?? null
+  const mePaused = me?.pulsePaused ?? false
+  const meStart = me?.sessionStartedAtMs ?? null
+  useEffect(() => {
+    setActiveRoomForActions(roomId ?? null)
+    void syncStudyNotifications({
+      studying: !!roomId && meStatus === 'studying',
+      paused: mePaused,
+      dueAtMs: meDue,
+      roomId: roomId ?? '',
+      roomName: room?.name ?? 'your classroom',
+      focusedLabel: focusedLabel(meStart)
+    })
+    return () => {
+      setActiveRoomForActions(null)
+    }
+    // room?.name intentionally read at sync time; it's stable per room
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, meStatus, meDue, mePaused, meStart, prefs.notificationsEnabled])
 
   return {
     status,

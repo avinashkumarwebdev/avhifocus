@@ -1,5 +1,6 @@
 import { Suspense, useMemo, useState, useEffect } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useThree } from '@react-three/fiber'
+import * as THREE from 'three'
 import type { MemberView, Phase } from '../types'
 import { RoomShell } from './RoomShell'
 import { Bench, CAPACITY, seatPosition } from './Bench'
@@ -11,12 +12,29 @@ import { Spinner } from '../components/ui'
 export function seatFocusView(seat: number): CameraView {
   const [x, , z] = seatPosition(seat)
   // approach from the centre aisle side, above desk height — never head-on
-  // through another student and never inside the bench itself
+  // through another student, never inside the bench, never past the back wall
   const side = x < 0 ? 0.95 : -0.95
   return {
-    position: [x + side * 2.4, 3.1, z + 4.4],
+    position: [x + side * 2.2, 2.9, Math.min(z + 3.3, 7.9)],
     target: [x, 0.9, z + 0.1]
   }
+}
+
+/**
+ * Phone-first lens: narrow portrait screens get a noticeably wider FOV so the
+ * whole classroom fits without benches (and their labels) being cropped at
+ * the edges; desktop landscape keeps the calmer, tighter classic lens.
+ */
+function FovFit() {
+  const camera = useThree((s) => s.camera)
+  const size = useThree((s) => s.size)
+  useEffect(() => {
+    const persp = camera as THREE.PerspectiveCamera
+    const aspect = size.width / Math.max(1, size.height)
+    persp.fov = aspect >= 1 ? 47 : Math.min(72, 58 + (0.75 / aspect - 1) * 18)
+    persp.updateProjectionMatrix()
+  }, [camera, size])
+  return null
 }
 
 export function detectWebGL(): boolean {
@@ -99,7 +117,7 @@ export function ClassroomScene({
         <Canvas
         shadows={!low}
         dpr={low ? [1, 1.15] : [1, 1.75]}
-        camera={{ position: DEFAULT_VIEW.position, fov: 42, near: 0.1, far: 60 }}
+        camera={{ position: DEFAULT_VIEW.position, fov: 60, near: 0.1, far: 60 }}
         gl={{
           antialias: !low,
           powerPreference: 'high-performance'
@@ -110,6 +128,7 @@ export function ClassroomScene({
       >
         <color attach="background" args={['#F0E7D5']} />
         <fog attach="fog" args={['#F0E7D5', 20, 38]} />
+        <FovFit />
 
         {/* warm daylight through the right-hand windows */}
         <hemisphereLight args={['#FFF4E0', '#8B7B68', 0.5]} />

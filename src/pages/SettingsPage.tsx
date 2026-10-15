@@ -14,7 +14,7 @@ import { enableNativePush } from '../lib/nativePush'
 import { startAmbient, stopAmbient } from '../lib/ambient'
 import { classLabelSchema, displayNameSchema } from '../lib/validation'
 import type { AvatarSpec } from '../types'
-import { Bell, CloudOff, LogOut, ShieldCheck, Volume2 } from 'lucide-react'
+import { Bell, CloudOff, LogOut, ShieldAlert, ShieldCheck, Trash2, Volume2 } from 'lucide-react'
 
 function Toggle({
   checked,
@@ -70,6 +70,9 @@ export default function SettingsPage() {
   const [avatar, setAvatar] = useState<AvatarSpec>(identity?.avatar ?? { skin: '#F2C9A4', hair: '#3B2A1E', hairStyle: 'short', shirt: '#D77A4A' })
   const [saving, setSaving] = useState(false)
   const [notifNote, setNotifNote] = useState<string | null>(null)
+  const [guardianTarget, setGuardianTarget] = useState('')
+  const [guardianPass, setGuardianPass] = useState('')
+  const [guardianBusy, setGuardianBusy] = useState(false)
 
   if (!identity) {
     navigate('/details?next=enter', { replace: true })
@@ -77,6 +80,31 @@ export default function SettingsPage() {
   }
 
   const permission = Capacitor.isNativePlatform() ? 'native (Android)' : notificationsSupported() ? Notification.permission : 'unsupported'
+
+  const runGuardianWipe = async () => {
+    if (!roomId || !guardianTarget || guardianBusy) return
+    const target = sync.members.find((m) => m.studentId === guardianTarget)
+    setGuardianBusy(true)
+    try {
+      await getBackend().pruneStudentData(roomId, identity, guardianTarget, guardianPass)
+      pushToast({
+        title: 'Data wiped',
+        body: `${target?.displayName ?? 'That student'}’s sessions, scores and bench were removed.`,
+        tone: 'success'
+      })
+      setGuardianPass('')
+      setGuardianTarget('')
+      await sync.refresh()
+    } catch (err) {
+      pushToast({
+        title: 'Wipe failed',
+        body: err instanceof Error ? err.message : 'Nothing was deleted. Check the pass and try again.',
+        tone: 'warn'
+      })
+    } finally {
+      setGuardianBusy(false)
+    }
+  }
 
   const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -313,6 +341,60 @@ export default function SettingsPage() {
             </Chip>
           </div>
         </Card>
+
+        {/* guardian tools — special-pass data wipe for misuse cases */}
+        {roomId && (
+          <Card className="border-[#D9B44A]/40 bg-[#FFFBEF] p-5">
+            <h2 className="flex items-center gap-2 font-rounded text-xl font-extrabold text-[#8A6D1A]">
+              <ShieldAlert size={18} /> Guardian tools
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-inksoft">
+              For misuse cases only (e.g. someone joined with a rude name or from a shared device): with the
+              special pass you can erase one student’s data from this classroom — focus history, leaderboard
+              scores, notifications and their bench.
+            </p>
+            <div className="mt-4 space-y-3">
+              <Field label="Student to wipe">
+                <select
+                  value={guardianTarget}
+                  onChange={(e) => setGuardianTarget(e.target.value)}
+                  className="w-full rounded-2xl border border-wood/25 bg-cream px-3.5 py-2.5 text-sm font-medium text-ink outline-none focus:border-forest"
+                >
+                  <option value="">Choose a student…</option>
+                  {sync.members
+                    .filter((m) => !m.isBot)
+                    .map((m) => (
+                      <option key={m.studentId} value={m.studentId}>
+                        {m.displayName} · {m.classLabel}
+                        {m.studentId === identity.id ? ' (you)' : ''}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Special pass" hint="Never stored. 8 characters.">
+                <TextInput
+                  value={guardianPass}
+                  onChange={(e) => setGuardianPass(e.target.value)}
+                  type="password"
+                  placeholder="••••••••"
+                  maxLength={16}
+                  autoComplete="off"
+                />
+              </Field>
+              <Button
+                variant="danger"
+                loading={guardianBusy}
+                disabled={!guardianTarget || guardianPass.length < 8}
+                onClick={() => void runGuardianWipe()}
+              >
+                <Trash2 size={15} /> Wipe their data
+              </Button>
+              <p className="text-[11px] leading-relaxed text-inksoft/80">
+                This cannot be undone. Their timer stops immediately and the bench frees up.
+              </p>
+            </div>
+          </Card>
+        )}
 
         {/* danger */}
         {roomId && (

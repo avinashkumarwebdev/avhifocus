@@ -98,6 +98,8 @@ export class BackendError extends Error {
       | 'NOT_A_MEMBER'
       | 'UNAUTHORIZED'
       | 'VALIDATION'
+      | 'TOO_LATE'
+      | 'GUARDIAN_DENIED'
       | 'NETWORK',
     message: string
   ) {
