@@ -26,7 +26,9 @@ async function persistToken(token: string): Promise<void> {
       { endpoint: `fcm:${token}`, keys: { p256dh: '', auth: '' } },
       identity
     )
-  } catch {
+    console.info('[push] FCM token saved for', identity.id)
+  } catch (e) {
+    console.warn('[push] token save failed — will retry on next identity update:', e instanceof Error ? e.message : e)
     pendingToken = token
   }
 }

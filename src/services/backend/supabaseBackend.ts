@@ -378,11 +378,12 @@ export class SupabaseBackend implements Backend {
     }
   }
 
-  async savePushSubscription(subscription: PushSubscriptionJSON, _identity: Identity): Promise<void> {
+  async savePushSubscription(subscription: PushSubscriptionJSON, identity: Identity): Promise<void> {
     await this.ensureSession()
     const keys = (subscription.keys ?? {}) as Record<string, string>
     const { error } = await this.supabase.from('push_subscriptions').upsert(
       {
+        student_id: identity.id, // required (NOT NULL) + satisfies ownership RLS
         endpoint: subscription.endpoint as string,
         public_key: keys.p256dh ?? '',
         auth_secret: keys.auth ?? '',
