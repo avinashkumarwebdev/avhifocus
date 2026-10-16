@@ -283,28 +283,43 @@ export function useRoomSync(roomId: string | undefined): UseRoomSync {
   const me = members.find((m) => m.studentId === identity?.id) ?? null
 
   // ── notification shade mirror (native only; no-op on web) ───────────────
-  // Sticky non-swipeable session card + locally scheduled pulse alarms with
-  // reply actions, so checks can be answered without leaving other apps.
+  // Sticky session card (with live elapsed-time copy) + locally scheduled
+  // pulse alarms with reply actions, answerable without leaving other apps.
   const meStatus = me?.status ?? 'idle'
   const meDue = me?.pulseDueAtMs ?? null
   const mePaused = me?.pulsePaused ?? false
   const meStart = me?.sessionStartedAtMs ?? null
+  const liveStateRef = useRef<{ studying: boolean; paused: boolean; dueAtMs: number | null; roomId: string; roomName: string } | null>(null)
   useEffect(() => {
     setActiveRoomForActions(roomId ?? null)
-    void syncStudyNotifications({
+    const base = {
       studying: !!roomId && meStatus === 'studying',
       paused: mePaused,
       dueAtMs: meDue,
       roomId: roomId ?? '',
-      roomName: room?.name ?? 'your classroom',
-      focusedLabel: focusedLabel(meStart)
-    })
+      roomName: room?.name ?? 'your classroom'
+    }
+    liveStateRef.current = base.studying ? base : null
+    void syncStudyNotifications({ ...base, focusedLabel: focusedLabel(meStart) })
     return () => {
       setActiveRoomForActions(null)
     }
     // room?.name intentionally read at sync time; it's stable per room
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, meStatus, meDue, mePaused, meStart, prefs.notificationsEnabled])
+
+  // Re-tick the sticky card's elapsed-time copy once a minute while studying.
+  const meStartRef = useRef(meStart)
+  meStartRef.current = meStart
+  useEffect(() => {
+    if (meStatus !== 'studying' || !roomId) return
+    const t = window.setInterval(() => {
+      const base = liveStateRef.current
+      if (base) void syncStudyNotifications({ ...base, focusedLabel: focusedLabel(meStartRef.current) })
+    }, 60_000)
+    return () => window.clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meStatus, roomId])
 
   return {
     status,

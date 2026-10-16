@@ -340,7 +340,10 @@ export async function syncStudyNotifications(s: StudyNotifState): Promise<void> 
       /* can't check — keep the flag */
     }
   }
-  if (!ongoingPosted) {
+  // Refresh the elapsed-time copy about once a minute so the shade never
+  // contradicts the in-app timer.
+  const staleCopy = ongoingPosted && !s.paused && Date.now() - ongoingAt > 55_000
+  if (!ongoingPosted || staleCopy) {
     try {
       await LocalNotifications.schedule({
         notifications: [
