@@ -117,7 +117,7 @@ begin
                     where student_id = auth.uid()), 120) into v_goal;
 
   select coalesce(sum(greatest(0::numeric, extract(epoch from (
-      least(s.ended_at, now()) - greatest(s.started_at, public.avhi_day_start_ist(v_week_start))))), 0)::bigint
+      least(s.ended_at, now()) - greatest(s.started_at, public.avhi_day_start_ist(v_week_start)))))), 0)::bigint
     into v_week
     from public.study_session_segments s
    where s.student_id = auth.uid() and s.segment_type = 'focus'
@@ -160,7 +160,7 @@ begin
     from public.classroom_members m
     left join lateral (
       select sum(greatest(0::numeric, extract(epoch from (
-        least(s.ended_at, now()) - greatest(s.started_at, public.avhi_day_start_ist(v_week_start))))) as secs
+        least(s.ended_at, now()) - greatest(s.started_at, public.avhi_day_start_ist(v_week_start)))))) as secs
         from public.study_session_segments s
        where s.classroom_id = p_classroom_id
          and s.student_id = m.student_id
