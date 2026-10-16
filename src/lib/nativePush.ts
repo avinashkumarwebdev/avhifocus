@@ -35,6 +35,8 @@ let ready = false
 let pendingToken: string | null = null
 /** Room the user is currently seated in (needed by background action replies). */
 let activeRoomId: string | null = null
+/** Last synced study state, so we can self-heal the shade on app resume. */
+let lastStudyState: StudyNotifState | null = null
 
 export function setActiveRoomForActions(roomId: string | null): void {
   activeRoomId = roomId
@@ -191,6 +193,14 @@ export function initNativePush(): void {
   void PushNotifications.addListener('registrationError', () => {
     /* google-services.json missing — documented setup step */
   })
+  // Android 14+ lets users swipe away even "ongoing" cards. If ours gets
+  // dismissed, it re-materialises the next time the app comes to the front.
+  void App.addListener('appStateChange', ({ isActive }) => {
+    if (isActive && lastStudyState) {
+      void syncStudyNotifications(lastStudyState)
+    }
+  })
+
   void PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
     openDeeplink(action.notification.data?.url as string | undefined)
   })
@@ -293,6 +303,7 @@ const fmtClock = (ms: number) =>
  */
 export async function syncStudyNotifications(s: StudyNotifState): Promise<void> {
   if (!Capacitor.isNativePlatform()) return
+  lastStudyState = s
   const enabled = useAppStore.getState().prefs.notificationsEnabled
 
   if (!s.studying || !enabled) {
@@ -317,7 +328,18 @@ export async function syncStudyNotifications(s: StudyNotifState): Promise<void> 
   }
   lastPaused = s.paused
 
-  // 1) sticky, non-removable "timer counting" card
+  // 1) sticky card — if the user swiped it away since we posted it, re-post.
+  // (Android 14 allows dismissing ongoing cards; we resurrect on every sync.)
+  if (ongoingPosted) {
+    try {
+      const { notifications: delivered } = await LocalNotifications.getDeliveredNotifications()
+      if (!delivered.some((n) => n.id === ID_ONGOING)) {
+        ongoingPosted = false
+      }
+    } catch {
+      /* can't check — keep the flag */
+    }
+  }
   if (!ongoingPosted) {
     try {
       await LocalNotifications.schedule({
@@ -327,7 +349,7 @@ export async function syncStudyNotifications(s: StudyNotifState): Promise<void> 
             title: s.paused ? `⏸ Paused · ${s.roomName}` : `🔥 Focusing · ${s.roomName}`,
             body: s.paused
               ? 'Timer paused — the gap didn’t count. Tap to resume when you’re back.'
-              : `${s.focusedLabel} of focus counted so far. This card can’t be swiped away while your timer runs.`,
+              : `${s.focusedLabel} of focus counted so far. Pinned while your timer runs — tap to return.`,
             channelId: 'avhi_ongoing',
             ongoing: true,
             autoCancel: false,

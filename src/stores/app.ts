@@ -39,7 +39,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       prefs: {
-        notificationsEnabled: false,
+        notificationsEnabled: true, // safe default: scheduling no-ops until OS permission is granted
         phaseAlerts: true,
         quietHours: true,
         reducedMotion: false,

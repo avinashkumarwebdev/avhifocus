@@ -1,12 +1,13 @@
 import { CAMERA_VIEWS } from '../../three/cameraViews'
-import { Armchair, CornerUpRight, Eye, GraduationCap, Home, SunMedium } from 'lucide-react'
+import { Armchair, CornerUpRight, Eye, GraduationCap, Home, ScanEye, SunMedium } from 'lucide-react'
 
 const ICONS: Record<string, typeof Home> = {
   overview: Home,
   board: GraduationCap,
   window: SunMedium,
   aisle: Eye,
-  top: CornerUpRight
+  top: CornerUpRight,
+  teacherpov: ScanEye
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { App } from '@capacitor/app'
@@ -16,7 +16,7 @@ import { PulseGate } from '../components/room/PulseGate'
 import { ViewPicker } from '../components/room/ViewPicker'
 import { useStrictGuard } from '../hooks/useStrictGuard'
 import { ClassroomScene, detectWebGL, seatFocusView } from '../three/ClassroomScene'
-import { cameraViewById } from '../three/cameraViews'
+import { cameraViewById, studentPovView } from '../three/cameraViews'
 import { Fallback2D } from '../three/Fallback2D'
 import { classroomCycle, focusSecondsBetween, formatDuration, getCycleState } from '../lib/time/cycle'
 import { showNativeNotification } from '../lib/notifications'
@@ -121,10 +121,26 @@ export default function ClassroomPage() {
     return focusSecondsBetween(classroomCycle(room), me.sessionStartedAtMs, nowMs)
   }, [room, me, nowMs])
 
-  // Resolved camera: a tapped seat always wins over the chosen preset.
+  // POV mode: first-person eyes at the POV seat wins over everything else.
+  const [povSeat, setPovSeat] = useState<number | null>(null)
+  const selectSeat = useCallback((seat: number | null) => {
+    setPovSeat(null)
+    setSelectedSeat(seat)
+  }, [])
+  const pickPreset = useCallback(
+    (id: string) => {
+      setPovSeat(null)
+      setSelectedSeat(null)
+      setCameraView(id)
+    },
+    [setCameraView]
+  )
+
+  // Resolved camera: POV > tapped seat > chosen preset.
   const resolvedView = useMemo(
-    () => (selectedSeat != null ? seatFocusView(selectedSeat) : cameraViewById(cameraView)),
-    [selectedSeat, cameraView]
+    () =>
+      povSeat != null ? studentPovView(povSeat) : selectedSeat != null ? seatFocusView(selectedSeat) : cameraViewById(cameraView),
+    [povSeat, selectedSeat, cameraView]
   )
 
   if (!identity) {
@@ -245,7 +261,7 @@ export default function ClassroomPage() {
             members={members}
             mySeat={me.seatNumber}
             selectedSeat={selectedSeat}
-            onSelectSeat={setSelectedSeat}
+            onSelectSeat={selectSeat}
             nowMs={nowMs}
             reducedMotion={reducedMotion}
             phase={phase}
@@ -256,7 +272,7 @@ export default function ClassroomPage() {
             members={members}
             mySeat={me.seatNumber}
             selectedSeat={selectedSeat}
-            onSelectSeat={setSelectedSeat}
+            onSelectSeat={selectSeat}
             phase={phase}
           />
         )}
@@ -271,12 +287,9 @@ export default function ClassroomPage() {
           <div className="absolute left-3 top-16 z-10 lg:top-3">
             <ViewPicker
               active={cameraView}
-              seatFocused={selectedSeat != null}
-              onPick={(id) => {
-                setCameraView(id)
-                setSelectedSeat(null)
-              }}
-              onMySeat={() => setSelectedSeat(me.seatNumber)}
+              seatFocused={selectedSeat != null || povSeat != null}
+              onPick={pickPreset}
+              onMySeat={() => selectSeat(me.seatNumber)}
             />
           </div>
         )}
@@ -288,7 +301,7 @@ export default function ClassroomPage() {
             myStudentId={identity.id}
             capacity={room.capacity}
             nowMs={nowMs}
-            onSelect={(s) => setSelectedSeat(s)}
+            onSelect={(s) => selectSeat(s)}
           />
           {!backendConfigured && <DemoTools roomId={room.id} hasBots={members.some((m) => m.isBot)} />}
         </div>
@@ -362,7 +375,7 @@ export default function ClassroomPage() {
               </span>
               {selectedSeat != null && (
                 <button
-                  onClick={() => setSelectedSeat(null)}
+                  onClick={() => selectSeat(null)}
                   className="flex items-center gap-1 rounded-full bg-forest/8 px-2.5 py-1 text-[11px] font-bold text-forest lg:hidden"
                 >
                   <RotateCcw size={11} /> overview
@@ -376,7 +389,7 @@ export default function ClassroomPage() {
         {selectedSeat != null && webglOK && (
           <div className="absolute left-1/2 top-20 z-10 hidden -translate-x-1/2 lg:block">
             <button
-              onClick={() => setSelectedSeat(null)}
+              onClick={() => selectSeat(null)}
               className="flex items-center gap-1.5 rounded-full border border-wood/15 bg-cream/90 px-3 py-1.5 text-xs font-bold text-forest shadow-card"
             >
               <RotateCcw size={12} /> Back to classroom overview
@@ -392,10 +405,24 @@ export default function ClassroomPage() {
         isMe={selectedMember?.studentId === identity.id}
         room={room}
         nowMs={nowMs}
-        onClose={() => setSelectedSeat(null)}
+        povActive={povSeat === selectedSeat}
+        onClose={() => selectSeat(null)}
         onNudge={(id) => void sync.nudge(id)}
         onSendMessage={(id, text) => void sync.sendMessage(id, text)}
+        onPov={(seat) => setPovSeat(seat)}
       />
+
+      {/* POV exit chip */}
+      {povSeat != null && (
+        <div className="absolute bottom-28 left-1/2 z-30 -translate-x-1/2 sm:bottom-32">
+          <button
+            onClick={() => setPovSeat(null)}
+            className="flex items-center gap-1.5 rounded-full border border-terra/40 bg-terradeep px-4 py-2 text-xs font-bold text-cream shadow-pop"
+          >
+            <RotateCcw size={13} /> Exit their eyes
+          </button>
+        </div>
+      )}
 
       <Sheet open={leaveOpen} onClose={() => setLeaveOpen(false)} title="Leave this classroom?">
         <p className="text-sm leading-relaxed text-inksoft">

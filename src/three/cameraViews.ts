@@ -11,6 +11,8 @@ export interface CameraView {
  * clamps all camera movement to that interior box, so no view can ever end
  * up outside the walls staring at void.
  */
+import { seatPosition } from './Bench'
+
 export const CAMERA_VIEWS: Array<{ id: string; label: string; view: CameraView }> = [
   {
     id: 'overview',
@@ -39,8 +41,26 @@ export const CAMERA_VIEWS: Array<{ id: string; label: string; view: CameraView }
     label: 'High back',
     // back-left corner, raised — the old straight-down preset left the room
     view: { position: [-4.9, 4.1, 7.9], target: [1.8, 0.5, -2.4] }
+  },
+  {
+    id: 'teacherpov',
+    label: 'Teacher’s eyes',
+    // first-person from the teacher's spot, facing the benches
+    view: { position: [0, 1.6, -7.0], target: [0, 1.15, 0.5] }
   }
 ]
+
+/**
+ * First-person eyes at any occupied bench: seated head height, angled down
+ * the aisle toward the blackboard (every bench faces the front).
+ */
+export function studentPovView(seat: number): CameraView {
+  const [x, , z] = seatPosition(seat)
+  return {
+    position: [x, 1.42, z - 0.25],
+    target: [x * 0.35, 1.3, -7.2]
+  }
+}
 
 export const DEFAULT_VIEW_ID = 'overview'
 export const DEFAULT_VIEW: CameraView = CAMERA_VIEWS[0].view

@@ -1,7 +1,7 @@
 import type { MemberView } from '../../types'
 import { AvatarChip } from '../AvatarChip'
 import { Sheet, Chip, Button } from '../ui'
-import { Armchair, Flame, HandMetal, MessageCircleHeart } from 'lucide-react'
+import { Armchair, Eye, Flame, HandMetal, MessageCircleHeart } from 'lucide-react'
 import { QUICK_MESSAGES } from '../../lib/quickMessages'
 import { formatDuration, focusSecondsBetween, classroomCycle } from '../../lib/time/cycle'
 import type { Classroom } from '../../types'
@@ -15,7 +15,9 @@ export function SeatPanel({
   nowMs,
   onClose,
   onNudge,
-  onSendMessage
+  onSendMessage,
+  onPov,
+  povActive
 }: {
   open: boolean
   seat: number | null
@@ -26,6 +28,8 @@ export function SeatPanel({
   onClose: () => void
   onNudge?: (targetStudentId: string) => void
   onSendMessage?: (targetStudentId: string, text: string) => void
+  onPov?: (seat: number) => void
+  povActive?: boolean
 }) {
   if (seat == null) return null
 
@@ -77,6 +81,11 @@ export function SeatPanel({
               Their timer is paused — no minutes are accruing until they resume. Fair play is visible here.
             </p>
           )}
+          {onPov && (
+            <Button variant={povActive ? 'secondary' : 'ghost'} className="!py-2 !text-xs" onClick={() => onPov(seat)}>
+              <Eye size={14} /> {povActive ? 'You’re seeing through their eyes' : isMe ? 'See from my bench' : 'See from their bench'}
+            </Button>
+          )}
           {canNudge && (
             <Button variant="ghost" className="!py-2 !text-xs" onClick={() => onNudge(member.studentId)}>
               <HandMetal size={14} /> Nudge “still studying?”
@@ -116,6 +125,11 @@ export function SeatPanel({
           <p className="max-w-xs text-sm leading-relaxed text-inksoft">
             Share the classroom code — the next student to join automatically takes the lowest open seat.
           </p>
+          {onPov && (
+            <Button variant={povActive ? 'secondary' : 'ghost'} className="!py-2 !text-xs" onClick={() => onPov(seat)}>
+              <Eye size={14} /> {povActive ? 'You’re seeing from this bench' : 'Preview this bench’s view'}
+            </Button>
+          )}
         </div>
       )}
     </Sheet>
