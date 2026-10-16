@@ -67,7 +67,7 @@ language sql stable security definer set search_path = public as $$
     )))
   ), 0)::bigint
     from public.study_session_segments s
-   where s.student_id = p_student_id
+   where s.student_id = p_student
      and s.segment_type = 'focus'
      and s.ended_at > public.avhi_day_start_ist(p_day)
      and s.started_at < public.avhi_day_start_ist(p_day + 1)
