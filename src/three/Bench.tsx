@@ -159,6 +159,11 @@ export function Bench({
               />
               {isMe ? 'You · ' : ''}
               {member.displayName.split(' ')[0]}
+              {member.streakDays >= 2 && (
+                <span className="rounded-full bg-amber-100 px-1 py-px text-[10px] font-bold leading-none text-amber-700" title={`${member.streakDays}-day focus streak`}>
+                  🔥{member.streakDays}
+                </span>
+              )}
               <span className="font-semibold text-inksoft/70">{member.classLabel}</span>
             </span>
             <span className="text-[10px] font-medium leading-none text-inksoft">

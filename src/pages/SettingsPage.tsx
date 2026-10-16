@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Card, Button, Field, TextInput, Chip } from '../components/ui'
 import { AvatarPicker } from '../components/AvatarPicker'
@@ -13,8 +13,9 @@ import { Capacitor } from '@capacitor/core'
 import { enableNativePush } from '../lib/nativePush'
 import { startAmbient, stopAmbient } from '../lib/ambient'
 import { classLabelSchema, displayNameSchema } from '../lib/validation'
-import type { AvatarSpec } from '../types'
-import { Bell, CloudOff, LogOut, ShieldAlert, ShieldCheck, Trash2, Volume2 } from 'lucide-react'
+import { nextUnlock } from '../lib/cosmetics'
+import type { AvatarSpec, StudyStats } from '../types'
+import { Bell, CloudOff, Flame, LogOut, BookOpenText, ShieldAlert, ShieldCheck, Target, Trash2, Volume2 } from 'lucide-react'
 
 function Toggle({
   checked,
@@ -73,6 +74,33 @@ export default function SettingsPage() {
   const [guardianTarget, setGuardianTarget] = useState('')
   const [guardianPass, setGuardianPass] = useState('')
   const [guardianBusy, setGuardianBusy] = useState(false)
+  const [stats, setStats] = useState<StudyStats | null>(null)
+  const [goalMins, setGoalMins] = useState(120)
+  const [goalBusy, setGoalBusy] = useState(false)
+  const [subject, setSubject] = useState('')
+  const [subjectBusy, setSubjectBusy] = useState(false)
+
+  // Engagement numbers (goal, streak, hours) — refreshed when the page opens.
+  useEffect(() => {
+    if (!identity) return
+    let alive = true
+    getBackend()
+      .getMyStudyStats(identity)
+      .then((s) => {
+        if (!alive) return
+        setStats(s)
+        setGoalMins(s.goalMinutes)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [identity?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Adopt the room's current subject as the editor's starting text.
+  useEffect(() => {
+    setSubject(sync.room?.subject ?? '')
+  }, [sync.room?.subject])
 
   if (!identity) {
     navigate('/details?next=enter', { replace: true })
@@ -177,6 +205,34 @@ export default function SettingsPage() {
     }
   }
 
+  const saveGoal = async () => {
+    if (goalBusy) return
+    setGoalBusy(true)
+    try {
+      await getBackend().setDailyGoal(goalMins, identity)
+      setStats((s) => (s ? { ...s, goalMinutes: goalMins } : s))
+      pushToast({ title: `Daily goal set to ${goalMins} min`, body: 'Keep a 15+ min day alive to grow your streak.', tone: 'success' })
+    } catch (err) {
+      pushToast({ title: 'Could not save goal', body: err instanceof Error ? err.message : 'Try again', tone: 'warn' })
+    } finally {
+      setGoalBusy(false)
+    }
+  }
+
+  const saveSubject = async () => {
+    if (!roomId || subjectBusy) return
+    setSubjectBusy(true)
+    try {
+      await getBackend().setSubject(roomId, subject, identity)
+      await sync.refresh()
+      pushToast({ title: subject.trim() ? 'Subject chalked on the blackboard' : 'Subject cleared', tone: 'success' })
+    } catch (err) {
+      pushToast({ title: 'Could not set subject', body: err instanceof Error ? err.message : 'Try again', tone: 'warn' })
+    } finally {
+      setSubjectBusy(false)
+    }
+  }
+
   const leave = async () => {
     if (!roomId) return
     stopAmbient()
@@ -208,7 +264,7 @@ export default function SettingsPage() {
                 <TextInput value={klass} onChange={(e) => setKlass(e.target.value)} maxLength={18} />
               </Field>
             </div>
-            <AvatarPicker value={avatar} onChange={setAvatar} />
+            <AvatarPicker value={avatar} onChange={setAvatar} lifetimeSeconds={stats?.lifetimeSeconds} />
             <Button type="submit" loading={saving} className="self-start">
               Save changes
             </Button>
@@ -244,6 +300,100 @@ export default function SettingsPage() {
             </p>
           )}
         </Card>
+
+        {/* daily goal + streak */}
+        <Card className="p-5">
+          <h2 className="flex items-center gap-2 font-rounded text-xl font-extrabold text-forest">
+            <Target size={18} /> Daily goal & streak
+          </h2>
+          {stats ? (
+            <div className="mt-3 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-700">
+                  <Flame size={13} /> {stats.streakDays}-day streak
+                </span>
+                <span className="font-semibold text-ink">
+                  Today {Math.floor(stats.todaySeconds / 60)}
+                  <span className="text-inksoft">/{stats.goalMinutes} min</span>
+                </span>
+                <span className="text-xs text-inksoft">
+                  This week {(stats.weekSeconds / 3600).toFixed(1)}h · total {(stats.lifetimeSeconds / 3600).toFixed(1)}h
+                </span>
+              </div>
+              {/* today's progress toward the goal */}
+              <div className="h-2.5 overflow-hidden rounded-full bg-sage/25" role="progressbar"
+                   aria-valuenow={Math.min(100, Math.round((stats.todaySeconds / (stats.goalMinutes * 60)) * 100))}
+                   aria-valuemin={0} aria-valuemax={100} aria-label="Today’s progress toward the daily goal">
+                <div
+                  className="h-full rounded-full bg-forest transition-all"
+                  style={{ width: `${Math.min(100, (stats.todaySeconds / Math.max(60, stats.goalMinutes * 60)) * 100).toFixed(1)}%` }}
+                />
+              </div>
+              {(() => {
+                const next = nextUnlock(stats.lifetimeSeconds)
+                return next ? (
+                  <p className="text-xs text-inksoft">
+                    🎁 {Math.floor(next.remainingSeconds / 3600)}h {Math.round((next.remainingSeconds % 3600) / 60)}m of focus unlocks <b>{next.label}</b> {next.icon} for your avatar.
+                  </p>
+                ) : (
+                  <p className="text-xs font-semibold text-forest">🎁 Every avatar gear item unlocked — impressive.</p>
+                )
+              })()}
+              <div className="flex flex-wrap items-center gap-2">
+                <Field label="Goal (minutes)" hint="15–720">
+                  <TextInput
+                    type="number" min={15} max={720} step={5}
+                    value={goalMins}
+                    onChange={(e) => setGoalMins(Math.max(15, Math.min(720, Number(e.target.value) || 15)))}
+                    className="w-28"
+                  />
+                </Field>
+                <Button type="button" onClick={() => void saveGoal()} loading={goalBusy} className="mt-5">
+                  Save goal
+                </Button>
+              </div>
+              <p className="text-[11px] leading-relaxed text-inksoft/80">
+                A ≥15-minute focus day keeps the flame alive; it’s safe until midnight. Quick presets: 30 · 60 · 120 · 180.
+              </p>
+              <div className="flex gap-1.5">
+                {[30, 60, 120, 180].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setGoalMins(m)}
+                    className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+                      goalMins === m ? 'bg-forest text-cream' : 'bg-creamdark/70 text-ink hover:bg-creamdark'
+                    }`}
+                  >
+                    {m}m
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-inksoft">Loading your study numbers…</p>
+          )}
+        </Card>
+
+        {/* subject of the day */}
+        {roomId && (
+          <Card className="p-5">
+            <h2 className="flex items-center gap-2 font-rounded text-xl font-extrabold text-forest">
+              <BookOpenText size={18} /> Subject of the day
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-inksoft">
+              Chalked onto the classroom blackboard and shown on the Hall card. Anyone in the room can change it.
+            </p>
+            <div className="mt-3 flex items-end gap-2">
+              <Field label="Today we’re studying" hint={`${subject.trim().length}/40`}>
+                <TextInput value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={40} placeholder="e.g. Trigonometry ch. 8" />
+              </Field>
+              <Button type="button" onClick={() => void saveSubject()} loading={subjectBusy} className="mb-0.5">
+                Save
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* integrity mode */}
         <Card className="p-5">

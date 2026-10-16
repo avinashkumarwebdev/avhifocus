@@ -1,5 +1,5 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
-import type { AvatarSpec, Classroom, HallPeek, Identity, IntegrityMode, Leaderboard, MemberView, RoomEvent, RoomState } from '../../types'
+import type { AvatarSpec, Classroom, HallPeek, Identity, IntegrityMode, Leaderboard, MemberView, RoomEvent, RoomState, StudyStats, WeekStatRow } from '../../types'
 import { BackendError } from '../../types'
 import { classroomNameSchema, classLabelSchema, displayNameSchema, joinCodeSchema } from '../../lib/validation'
 import { isQuickMessage, MESSAGE_RATE_LIMIT_MS } from '../../lib/quickMessages'
@@ -88,7 +88,8 @@ export class SupabaseBackend implements Backend {
       breakSeconds: r.break_duration_seconds,
       createdAtMs: new Date(r.created_at).getTime(),
       isActive: r.is_active,
-      integrityMode: (r.integrity_mode ?? 'balanced') as IntegrityMode
+      integrityMode: (r.integrity_mode ?? 'balanced') as IntegrityMode,
+      subject: r.subject ?? null
     }
   }
 
@@ -103,6 +104,7 @@ export class SupabaseBackend implements Backend {
       joinCode: r.join_code,
       capacity: r.capacity,
       integrityMode: (r.integrity_mode ?? 'balanced') as IntegrityMode,
+      subject: r.subject ?? null,
       members: r.members,
       studying: r.studying,
       cycleAnchorMs: new Date(r.cycle_anchor_at).getTime(),
@@ -129,7 +131,9 @@ export class SupabaseBackend implements Backend {
       pulseDueAtMs:
         r.pulse_due_at && (!viewerStudentId || r.student_id === viewerStudentId)
           ? new Date(r.pulse_due_at).getTime()
-          : null
+          : null,
+      streakDays: typeof r.streak_days === 'number' ? r.streak_days : 0,
+      todayFocusSeconds: typeof r.today_focus_seconds === 'number' ? r.today_focus_seconds : 0
     }
   }
 
@@ -394,6 +398,43 @@ export class SupabaseBackend implements Backend {
       .subscribe()
     this.channels.set(classroomId, channel)
     return () => this.unsubscribeRoom(classroomId)
+  }
+
+  async setDailyGoal(minutes: number): Promise<void> {
+    await this.ensureSession()
+    const { error } = await this.supabase.rpc('avhi_set_daily_goal', { p_minutes: Math.round(minutes) })
+    if (error) this.rpcError(error)
+  }
+
+  async getMyStudyStats(): Promise<StudyStats> {
+    await this.ensureSession()
+    const { data, error } = await this.supabase.rpc('avhi_my_study_stats')
+    if (error) this.rpcError(error)
+    const r = data as Record<string, number>
+    return {
+      goalMinutes: r.goal_minutes,
+      todaySeconds: r.today_seconds,
+      streakDays: r.streak_days,
+      weekSeconds: r.week_seconds,
+      lifetimeSeconds: r.lifetime_seconds
+    }
+  }
+
+  async getWeekStats(classroomId: string): Promise<WeekStatRow[]> {
+    await this.ensureSession()
+    const { data, error } = await this.supabase.rpc('avhi_week_stats', { p_classroom_id: classroomId })
+    if (error) this.rpcError(error)
+    return ((data as Array<{ student_id: string; display_name: string; seconds: number }>) ?? []).map(
+      (r) => ({ studentId: r.student_id, displayName: r.display_name, seconds: r.seconds })
+    )
+  }
+
+  async setSubject(classroomId: string, subject: string): Promise<void> {
+    await this.ensureSession()
+    const trimmed = subject.trim()
+    if (trimmed.length > 40) throw new BackendError('VALIDATION', 'Keep the subject of the day under 40 characters.')
+    const { error } = await this.supabase.rpc('avhi_set_subject', { p_classroom_id: classroomId, p_subject: trimmed })
+    if (error) this.rpcError(error)
   }
 
   private unsubscribeRoom(classroomId: string) {

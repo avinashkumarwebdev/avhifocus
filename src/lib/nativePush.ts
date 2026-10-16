@@ -423,3 +423,106 @@ export async function syncStudyNotifications(s: StudyNotifState): Promise<void> 
 }
 
 
+// ── engagement reminders (locally scheduled; no server cron needed) ─────────
+export const ID_RECAP = 90013
+export const ID_STREAK_RISK = 90014
+
+export interface EngagementNotifState {
+  roomId: string
+  roomName: string
+  /** My focus seconds this week (Mon→now). */
+  weekSeconds: number
+  /** My rank (1-based) among members, or null when nobody has focused. */
+  rank: number | null
+  members: number
+  streakDays: number
+  todaySeconds: number
+}
+
+/** Next Sunday 19:00 local (or this Sunday if it's still ahead of us). */
+function nextSundayEvening(now: Date): Date {
+  const d = new Date(now)
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7))
+  d.setHours(19, 0, 0, 0)
+  if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 7)
+  return d
+}
+
+const fmtHours = (seconds: number) => {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.round((seconds % 3600) / 60)
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+/**
+ * Weekly recap (Sun 19:00) + streak-at-risk (21:00 same day) reminders.
+ * Recomputed on every classroom open; idempotent per target timestamp, so a
+ * full day of opens costs at most two schedule writes.
+ */
+export async function syncEngagementNotifications(s: EngagementNotifState): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return
+  const enabled = useAppStore.getState().prefs.notificationsEnabled
+  if (!enabled) {
+    await cancel([ID_RECAP, ID_STREAK_RISK])
+    return
+  }
+
+  const now = new Date()
+
+  // 1) weekly recap — in your top room
+  const recapAt = nextSundayEvening(now)
+  const recapKey = `avhifocus.recap.${recapAt.getTime()}`
+  if (localStorage.getItem('avhifocus.recap') !== recapKey) {
+    try {
+      const rankBit = s.rank !== null ? ` · #${s.rank} of ${s.members} in ${s.roomName}` : ''
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: ID_RECAP,
+            title: '📚 Your week at a glance',
+            body: `You focused ${fmtHours(s.weekSeconds)}${rankBit}. Ready for another?`,
+            schedule: { at: recapAt, allowWhileIdle: true },
+            smallIcon: 'ic_stat_notify',
+            channelId: 'avhi_pulses',
+            extra: { url: s.roomId ? `/room/${s.roomId}` : '/' }
+          }
+        ]
+      })
+      localStorage.setItem('avhifocus.recap', recapKey)
+    } catch {
+      /* scheduling failed — non-fatal */
+    }
+  }
+
+  // 2) streak at risk — 21:00 today, only while the flame is savable
+  const riskIsLive = s.streakDays >= 2 && s.todaySeconds < 15 * 60
+  if (!riskIsLive) {
+    await cancel([ID_STREAK_RISK])
+    localStorage.removeItem('avhifocus.streak')
+    return
+  }
+  const ninePm = new Date(now)
+  ninePm.setHours(21, 0, 0, 0)
+  if (ninePm.getTime() - now.getTime() < 30 * 60 * 1000) return // too close/past — let the day decide
+  const streakKey = `avhifocus.streak.${ninePm.getTime()}`
+  if (localStorage.getItem('avhifocus.streak') !== streakKey) {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: ID_STREAK_RISK,
+            title: `🔥 Your ${s.streakDays}-day streak needs you`,
+            body: 'Bank 15 minutes of focus before midnight to keep the flame alive.',
+            schedule: { at: ninePm, allowWhileIdle: true },
+            smallIcon: 'ic_stat_notify',
+            channelId: 'avhi_pulses',
+            extra: { url: s.roomId ? `/room/${s.roomId}` : '/' }
+          }
+        ]
+      })
+      localStorage.setItem('avhifocus.streak', streakKey)
+    } catch {
+      /* scheduling failed — non-fatal */
+    }
+  }
+}

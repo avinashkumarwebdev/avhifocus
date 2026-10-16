@@ -6,7 +6,9 @@ import type {
   Leaderboard,
   MemberView,
   RoomEvent,
-  RoomState
+  RoomState,
+  StudyStats,
+  WeekStatRow
 } from '../../types'
 
 /**
@@ -64,6 +66,17 @@ export interface Backend {
   setIntegrityMode(classroomId: string, identity: Identity, mode: IntegrityMode): Promise<void>
 
   getLeaderboard(classroomId: string, identity: Identity): Promise<Leaderboard>
+
+  // ── engagement (daily goal / streaks / subject of the day) ──────────────
+  /** Persist my daily goal (15–720 minutes). Identity optional on Supabase (auth). */
+  setDailyGoal(minutes: number, identity?: Identity): Promise<void>
+  /** My bundle: goal, today, streak, week (Mon→now, IST) and lifetime focus. */
+  getMyStudyStats(identity?: Identity): Promise<StudyStats>
+  /** All active members' week focus seconds (Mon→now, IST), best first. */
+  getWeekStats(classroomId: string): Promise<WeekStatRow[]>
+  /** Set the subject of the day written on the blackboard (≤ 40 chars). */
+  setSubject(classroomId: string, subject: string, identity?: Identity): Promise<void>
+
   subscribeRoom(classroomId: string, cb: (e: RoomEvent) => void): () => void
 
   savePushSubscription(subscription: PushSubscriptionJSON, identity: Identity): Promise<void>

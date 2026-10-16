@@ -153,8 +153,8 @@ function PendantLamp({ position }: { position: [number, number, number] }) {
   )
 }
 
-export function RoomShell({ roomName }: { roomName: string }) {
-  const boardTexture = useMemo(() => makeBlackboardTexture(roomName), [roomName])
+export function RoomShell({ roomName, subject }: { roomName: string; subject?: string | null }) {
+  const boardTexture = useMemo(() => makeBlackboardTexture(roomName, subject ?? null), [roomName, subject])
 
   return (
     <group>

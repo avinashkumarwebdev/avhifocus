@@ -16,6 +16,8 @@ export interface AvatarSpec {
   hair: string
   hairStyle: HairStyle
   shirt: string
+  /** Earned gear ids (see src/lib/cosmetics.ts) — opaque to auth/`set_avatar`. */
+  gear?: string[]
 }
 
 export interface Identity {
@@ -36,6 +38,8 @@ export interface Classroom {
   createdAtMs: number
   isActive: boolean
   integrityMode: IntegrityMode
+  /** Subject of the day written on the blackboard; null until someone sets it. */
+  subject: string | null
 }
 
 export interface MemberView {
@@ -56,11 +60,30 @@ export interface MemberView {
   pulsePaused: boolean
   /** Next presence-pulse deadline for THIS viewer's own session (null for others). */
   pulseDueAtMs: number | null
+  /** Consecutive 15+ min focus days (IST); shown as 🔥 on the seat label. */
+  streakDays: number
+  /** Focus seconds banked today (IST); self uses it for goal progress. */
+  todayFocusSeconds: number
 }
 
 export interface RoomState {
   classroom: Classroom
   members: MemberView[]
+}
+
+export interface StudyStats {
+  goalMinutes: number
+  todaySeconds: number
+  streakDays: number
+  /** Monday → now (IST). */
+  weekSeconds: number
+  lifetimeSeconds: number
+}
+
+export interface WeekStatRow {
+  studentId: string
+  displayName: string
+  seconds: number
 }
 
 export interface LeaderboardRow {
@@ -118,6 +141,8 @@ export interface HallPeek {
   joinCode: string
   capacity: number
   integrityMode: IntegrityMode
+  /** Subject of the day, shown on the hall card. */
+  subject: string | null
   /** Benches currently taken. 0 ⇒ the room is dormant (features stopped). */
   members: number
   /** Students currently focusing. */

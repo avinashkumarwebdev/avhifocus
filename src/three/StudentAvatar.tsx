@@ -16,6 +16,55 @@ const eyeMat = new THREE.MeshStandardMaterial({ color: '#292D27', roughness: 0.4
 const pageMat = new THREE.MeshStandardMaterial({ color: '#FBF6EA', roughness: 0.9 })
 const coverMat = new THREE.MeshStandardMaterial({ color: '#244B38', roughness: 0.8 })
 
+// ── earned gear (see src/lib/cosmetics.ts) — static geometry/materials ───────
+const capDomeGeo = new THREE.SphereGeometry(0.19, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.42)
+const capBrimGeo = new THREE.BoxGeometry(0.2, 0.018, 0.14)
+const capMat = new THREE.MeshStandardMaterial({ color: '#B8433F', roughness: 0.7 })
+const capBrimMat = new THREE.MeshStandardMaterial({ color: '#8E2F2C', roughness: 0.7 })
+const glassesRimGeo = new THREE.TorusGeometry(0.052, 0.008, 8, 20)
+const glassesArmGeo = new THREE.BoxGeometry(0.016, 0.012, 0.11)
+const glassesBridgeGeo = new THREE.BoxGeometry(0.03, 0.012, 0.012)
+const frameMat = new THREE.MeshStandardMaterial({ color: '#2E3532', roughness: 0.35, metalness: 0.4 })
+const headphoneBandGeo = new THREE.TorusGeometry(0.185, 0.018, 8, 24, Math.PI)
+const headphoneCupGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.035, 14)
+const headphoneMat = new THREE.MeshStandardMaterial({ color: '#314155', roughness: 0.5 })
+const headcupMat = new THREE.MeshStandardMaterial({ color: '#1E2A3A', roughness: 0.5 })
+
+/**
+ * Earned wearables attached to the head group: cap (10h), glasses (25h),
+ * headphones (50h). Hidden while the avatar is away (dims to a ghost).
+ */
+function AvatarGear({ gear, dim }: { gear: string[]; dim: boolean }) {
+  if (dim) return null
+  return (
+    <>
+      {gear.includes('cap') && (
+        <group position={[0, 0.09, 0.015]} rotation={[-0.1, 0, 0]}>
+          <mesh geometry={capDomeGeo} material={capMat} castShadow />
+          <mesh geometry={capBrimGeo} material={capBrimMat} position={[0, 0.012, -0.2]} rotation={[0.06, 0, 0]} />
+        </group>
+      )}
+      {gear.includes('glasses') && (
+        <group position={[0, -0.015, -0.155]}>
+          {/* students face -z; rims sit in the xy plane */}
+          <mesh geometry={glassesRimGeo} material={frameMat} position={[-0.065, 0, 0]} />
+          <mesh geometry={glassesRimGeo} material={frameMat} position={[0.065, 0, 0]} />
+          <mesh geometry={glassesBridgeGeo} material={frameMat} position={[0, 0.002, -0.004]} />
+          <mesh geometry={glassesArmGeo} material={frameMat} position={[-0.115, 0, 0.055]} />
+          <mesh geometry={glassesArmGeo} material={frameMat} position={[0.115, 0, 0.055]} />
+        </group>
+      )}
+      {gear.includes('headphones') && (
+        <group position={[0, 0.1, 0.01]}>
+          <mesh geometry={headphoneBandGeo} material={headphoneMat} rotation={[0, Math.PI / 2, 0]} />
+          <mesh geometry={headphoneCupGeo} material={headcupMat} position={[-0.175, -0.12, 0.01]} rotation={[0, 0, Math.PI / 2]} />
+          <mesh geometry={headphoneCupGeo} material={headcupMat} position={[0.175, -0.12, 0.01]} rotation={[0, 0, Math.PI / 2]} />
+        </group>
+      )}
+    </>
+  )
+}
+
 /**
  * Lightweight stylized avatar in a sitting pose, animated from the person's
  * actual backend status: studying (lean + write bob), idle (soft sway),
@@ -97,6 +146,8 @@ export function StudentAvatar({
         {/* eyes — students face the blackboard (-z) */}
         <mesh geometry={eyeGeo} material={eyeMat} position={[-0.06, -0.01, -0.155]} />
         <mesh geometry={eyeGeo} material={eyeMat} position={[0.06, -0.01, -0.155]} />
+        {/* earned gear (wearables above the eyes/hair) */}
+        <AvatarGear gear={avatar.gear ?? []} dim={mats.dim} />
       </group>
 
       {/* arms — resting toward the desk when present */}

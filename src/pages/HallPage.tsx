@@ -130,6 +130,9 @@ export default function HallPage() {
             </div>
             <p className="mt-1 text-sm leading-relaxed text-inksoft">
               One shared classroom · {peek.focusSeconds / 60}-minute focus / {peek.breakSeconds / 60}-minute break
+              {peek.subject && (
+                <span className="mt-0.5 block text-xs font-bold text-terra">📖 Today: {peek.subject}</span>
+              )}
               rhythm · 10 benches.
             </p>
 

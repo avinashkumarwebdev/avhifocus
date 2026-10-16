@@ -3,8 +3,8 @@ import * as THREE from 'three'
 let cachedBoard: { key: string; texture: THREE.CanvasTexture } | null = null
 
 /** Chalkboard texture with the classroom name, drawn on a canvas (no external assets). */
-export function makeBlackboardTexture(roomName: string): THREE.CanvasTexture {
-  const key = roomName
+export function makeBlackboardTexture(roomName: string, subject: string | null = null): THREE.CanvasTexture {
+  const key = `${roomName}¦${subject ?? ''}`
   if (cachedBoard?.key === key) return cachedBoard.texture
 
   const canvas = document.createElement('canvas')
@@ -52,9 +52,17 @@ export function makeBlackboardTexture(roomName: string): THREE.CanvasTexture {
   ctx.font = '500 38px ui-rounded, "Comic Sans MS", cursive, sans-serif'
   ctx.fillStyle = 'rgba(215,122,74,0.95)'
   ctx.fillText('50 min focus   ·   10 min break', 176, 285)
-  ctx.fillStyle = 'rgba(244,235,221,0.6)'
-  ctx.font = '400 32px ui-rounded, "Comic Sans MS", cursive, sans-serif'
-  ctx.fillText('quiet, steady, together', 176, 345)
+  if (subject && subject.trim() !== '') {
+    // Subject of the day replaces the tagline — anyone can chalk it up.
+    ctx.fillStyle = 'rgba(233,190,106,0.95)'
+    ctx.font = '600 40px ui-rounded, "Comic Sans MS", cursive, sans-serif'
+    const line = `Today: ${subject.trim()}`
+    ctx.fillText(line.length > 32 ? line.slice(0, 32) + '…' : line, 176, 345)
+  } else {
+    ctx.fillStyle = 'rgba(244,235,221,0.6)'
+    ctx.font = '400 32px ui-rounded, "Comic Sans MS", cursive, sans-serif'
+    ctx.fillText('quiet, steady, together', 176, 345)
+  }
 
   // Underline flourish
   ctx.strokeStyle = 'rgba(244,235,221,0.5)'

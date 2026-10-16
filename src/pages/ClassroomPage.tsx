@@ -20,6 +20,7 @@ import { cameraViewById, studentPovView } from '../three/cameraViews'
 import { Fallback2D } from '../three/Fallback2D'
 import { classroomCycle, focusSecondsBetween, formatDuration, getCycleState } from '../lib/time/cycle'
 import { showNativeNotification } from '../lib/notifications'
+import { syncEngagementNotifications } from '../lib/nativePush'
 import { backendConfigured, getBackend } from '../services/backend'
 import { Check, Copy, LogOut, Play, RotateCcw, Settings, Share2, Square, Trophy, Users } from 'lucide-react'
 
@@ -54,6 +55,34 @@ export default function ClassroomPage() {
   useEffect(() => {
     if (room) setLastRoom({ id: room.id, name: room.name })
   }, [room, setLastRoom])
+
+  // Engagement reminders (weekly recap + streak-at-risk): recomputed once per
+  // room open — the scheduler is itself idempotent per target timestamp.
+  const engagementSynced = useRef<string | null>(null)
+  useEffect(() => {
+    if (!room || !identity || !Capacitor.isNativePlatform()) return
+    if (engagementSynced.current === room.id) return
+    engagementSynced.current = room.id
+    void (async () => {
+      try {
+        const backend = getBackend()
+        const [stats, week] = await Promise.all([backend.getMyStudyStats(identity), backend.getWeekStats(room.id)])
+        const rankIdx = week.findIndex((w) => w.studentId === identity.id)
+        await syncEngagementNotifications({
+          roomId: room.id,
+          roomName: room.name,
+          weekSeconds: stats.weekSeconds,
+          rank: rankIdx >= 0 && week[rankIdx].seconds > 0 ? rankIdx + 1 : null,
+          members: Math.max(week.length, 1),
+          streakDays: stats.streakDays,
+          todaySeconds: stats.todaySeconds
+        })
+      } catch {
+        /* engagement reminders are best-effort */
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.id, identity?.id])
 
   // Notification deep-link: /room/:id?ack=1(&back=1) — confirm the pending
   // pulse as soon as the room loads, so a nudge can be answered in one tap.
@@ -258,6 +287,7 @@ export default function ClassroomPage() {
         {webglOK ? (
           <ClassroomScene
             roomName={room.name}
+            subject={room.subject}
             members={members}
             mySeat={me.seatNumber}
             selectedSeat={selectedSeat}

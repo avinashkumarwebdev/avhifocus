@@ -73,6 +73,7 @@ export function detectQuality(): 'high' | 'low' {
 
 export function ClassroomScene({
   roomName,
+  subject,
   members,
   mySeat,
   selectedSeat,
@@ -83,6 +84,8 @@ export function ClassroomScene({
   view
 }: {
   roomName: string
+  /** Subject of the day chalked on the blackboard (from the room record). */
+  subject?: string | null
   members: MemberView[]
   mySeat: number | null
   selectedSeat: number | null
@@ -150,7 +153,7 @@ export function ClassroomScene({
         <directionalLight position={[-6, 6, 8]} intensity={0.25} color="#DDE8D8" />
 
         <Suspense fallback={null}>
-          <RoomShell roomName={roomName} />
+          <RoomShell roomName={roomName} subject={subject ?? null} />
           <Teacher phase={phase} reducedMotion={reducedMotion} />
           {Array.from({ length: CAPACITY }, (_, i) => i + 1).map((seat) => (
             <Bench

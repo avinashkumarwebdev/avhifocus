@@ -8,7 +8,9 @@ import type {
   LeaderboardRow,
   MemberView,
   RoomEvent,
-  RoomState
+  RoomState,
+  StudyStats,
+  WeekStatRow
 } from '../../types'
 import { BackendError } from '../../types'
 import { isQuickMessage, MESSAGE_RATE_LIMIT_MS } from '../../lib/quickMessages'
@@ -73,6 +75,7 @@ interface ClassroomRow {
   createdAtMs: number
   isActive: boolean
   integrityMode: IntegrityMode
+  subject?: string | null
 }
 
 interface MemberRow {
@@ -137,9 +140,20 @@ interface DB {
   sessions: Record<string, SessionRow>
   segments: Record<string, SegmentRow>
   pulses: Record<string, PulseRow>
+  /** Per-student preferences keyed by student id (daily goal in minutes). */
+  settings: Record<string, { dailyGoalMinutes: number }>
 }
 
-const emptyDB = (): DB => ({ classrooms: {}, members: {}, sessions: {}, segments: {}, pulses: {} })
+const emptyDB = (): DB => ({ classrooms: {}, members: {}, sessions: {}, segments: {}, pulses: {}, settings: {} })
+
+// ── engagement day math (IST wall-clock days, same rule as Postgres 0009) ──
+const IST_OFFSET_MS = (5 * 60 + 30) * 60_000
+/** 00:00 IST that contains `ms`. */
+const istDayStartMs = (ms: number): number =>
+  Math.floor((ms + IST_OFFSET_MS) / 86_400_000) * 86_400_000 - IST_OFFSET_MS
+const DAY_MS = 86_400_000
+/** Focus seconds [start,end) inside an IST day. */
+const STREAK_DAY_MIN_SECONDS = 15 * 60
 
 type Listener = (payload: { roomId: string; event: RoomEvent }) => void
 
@@ -154,6 +168,7 @@ export interface LocalBackendOptions {
 function migrate(raw: Partial<DB>): DB {
   const db = { ...emptyDB(), ...raw } as DB
   if (!db.pulses) db.pulses = {}
+  if (!db.settings) db.settings = {}
   for (const c of Object.values(db.classrooms)) {
     if (!c.integrityMode) c.integrityMode = 'relaxed'
   }
@@ -349,11 +364,45 @@ export class LocalBackend implements Backend {
   }
 
   private toClassroom(row: ClassroomRow): Classroom {
-    return { ...row }
+    return { ...row, subject: row.subject ?? null }
+  }
+
+  /** Focus seconds one student banked inside the IST day starting at `dayStart`. */
+  private dayFocusSeconds(db: DB, studentId: string, dayStart: number): number {
+    const dayEnd = dayStart + DAY_MS
+    let sec = 0
+    for (const seg of Object.values(db.segments)) {
+      if (seg.studentId !== studentId) continue
+      const start = Math.max(seg.startMs, dayStart)
+      const end = Math.min(seg.endMs, dayEnd)
+      if (end > start) sec += (end - start) / 1000
+    }
+    return sec
+  }
+
+  /** Consecutive 15+ min focus days; grace: yesterday holds the streak until midnight. */
+  private streakDays(db: DB, studentId: string, nowMs: number): number {
+    const todayStart = istDayStartMs(nowMs)
+    let streak = this.dayFocusSeconds(db, studentId, todayStart) >= STREAK_DAY_MIN_SECONDS ? 1 : 0
+    let day = todayStart - DAY_MS
+    for (let i = 0; i < 730; i += 1) {
+      if (this.dayFocusSeconds(db, studentId, day) < STREAK_DAY_MIN_SECONDS) break
+      streak += 1
+      day -= DAY_MS
+    }
+    return streak
+  }
+
+  /** 00:00 IST of the Monday of the week containing `ms`. */
+  private weekStartMs(nowMs: number): number {
+    const todayStart = istDayStartMs(nowMs)
+    const weekday = new Date(todayStart + IST_OFFSET_MS).getUTCDay() // 0=Sun
+    return todayStart - ((weekday + 6) % 7) * DAY_MS
   }
 
   private toMemberView(db: DB, row: MemberRow, viewerStudentId: string): MemberView {
     const session = this.openSession(db, row.classroomId, row.studentId)
+    const nowMs = this.now()
     return {
       memberId: row.id,
       studentId: row.studentId,
@@ -361,7 +410,7 @@ export class LocalBackend implements Backend {
       classLabel: row.classLabel,
       avatar: row.avatar,
       seatNumber: row.seatNumber,
-      online: row.isBot ? true : this.now() - row.lastSeenAtMs <= ONLINE_WITHIN_MS,
+      online: row.isBot ? true : nowMs - row.lastSeenAtMs <= ONLINE_WITHIN_MS,
       isBot: row.isBot,
       lastSeenAtMs: row.lastSeenAtMs,
       joinedAtMs: row.joinedAtMs,
@@ -369,7 +418,9 @@ export class LocalBackend implements Backend {
       sessionStartedAtMs: session ? session.origStartedAtMs : null,
       pulsePaused: session ? session.pulsePaused : false,
       // pulse timing is private: only the session owner sees their deadline
-      pulseDueAtMs: session && row.studentId === viewerStudentId ? session.pulseDueAtMs : null
+      pulseDueAtMs: session && row.studentId === viewerStudentId ? session.pulseDueAtMs : null,
+      streakDays: this.streakDays(db, row.studentId, nowMs),
+      todayFocusSeconds: Math.round(this.dayFocusSeconds(db, row.studentId, istDayStartMs(nowMs)))
     }
   }
 
@@ -455,6 +506,7 @@ export class LocalBackend implements Backend {
       joinCode: room.joinCode,
       capacity: room.capacity,
       integrityMode: room.integrityMode,
+      subject: room.subject ?? null,
       members: members.length,
       studying,
       cycleAnchorMs: room.cycleAnchorMs,
@@ -905,6 +957,70 @@ export class LocalBackend implements Backend {
       integrityMode: room.integrityMode,
       rows
     }
+  }
+
+  // ── engagement (daily goal / streaks / subject) ─────────────────────────
+  async setDailyGoal(minutes: number, identity: Identity): Promise<void> {
+    const mins = Math.round(minutes)
+    if (mins < 15 || mins > 720) throw new BackendError('VALIDATION', 'Daily goal must be 15–720 minutes.')
+    const db = this.load()
+    db.settings[identity.id] = { dailyGoalMinutes: mins }
+    this.save(db)
+  }
+
+  async getMyStudyStats(identity: Identity): Promise<StudyStats> {
+    const db = this.load()
+    const nowMs = this.now()
+    const todayStart = istDayStartMs(nowMs)
+    const weekStart = this.weekStartMs(nowMs)
+    let weekSeconds = 0
+    let lifetimeSeconds = 0
+    for (const seg of Object.values(db.segments)) {
+      if (seg.studentId !== identity.id) continue
+      lifetimeSeconds += (seg.endMs - seg.startMs) / 1000
+      const end = Math.min(seg.endMs, nowMs)
+      const start = Math.max(seg.startMs, weekStart)
+      if (end > start) weekSeconds += (end - start) / 1000
+    }
+    return {
+      goalMinutes: db.settings[identity.id]?.dailyGoalMinutes ?? 120,
+      todaySeconds: Math.round(this.dayFocusSeconds(db, identity.id, todayStart)),
+      streakDays: this.streakDays(db, identity.id, nowMs),
+      weekSeconds: Math.round(weekSeconds),
+      lifetimeSeconds: Math.round(lifetimeSeconds)
+    }
+  }
+
+  async getWeekStats(classroomId: string): Promise<WeekStatRow[]> {
+    const db = this.load()
+    this.requireRoom(db, classroomId)
+    const weekStart = this.weekStartMs(this.now())
+    const nowMs = this.now()
+    const rows = this.activeMembers(db, classroomId)
+      .filter((m) => !m.isBot)
+      .map((m) => {
+        let seconds = 0
+        for (const seg of Object.values(db.segments)) {
+          if (seg.studentId !== m.studentId || seg.classroomId !== classroomId) continue
+          const end = Math.min(seg.endMs, nowMs)
+          const start = Math.max(seg.startMs, weekStart)
+          if (end > start) seconds += (end - start) / 1000
+        }
+        return { studentId: m.studentId, displayName: m.displayName, seconds: Math.round(seconds) }
+      })
+      .sort((a, b) => b.seconds - a.seconds || a.displayName.localeCompare(b.displayName))
+    return rows
+  }
+
+  async setSubject(classroomId: string, subject: string, identity?: Identity): Promise<void> {
+    const trimmed = subject.trim()
+    if (trimmed.length > 40) throw new BackendError('VALIDATION', 'Keep the subject of the day under 40 characters.')
+    const db = this.load()
+    const room = this.requireRoom(db, classroomId)
+    if (identity) this.requireMembership(db, classroomId, identity.id)
+    room.subject = trimmed === '' ? null : trimmed
+    this.save(db)
+    this.emit(classroomId, { kind: 'room-changed' })
   }
 
   async savePushSubscription(_subscription: PushSubscriptionJSON, _identity: Identity): Promise<void> {

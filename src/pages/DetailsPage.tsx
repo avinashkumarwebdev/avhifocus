@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Card, Button, Field, TextInput } from '../components/ui'
 import { AvatarPicker } from '../components/AvatarPicker'
@@ -6,6 +6,7 @@ import { Wordmark } from '../components/Logo'
 import { chevronLeft } from './shared'
 import { useIdentityStore, DEFAULT_AVATAR } from '../stores/identity'
 import { classLabelSchema as clsSchema, displayNameSchema as nameSchema, classSuggestions as suggestions } from '../lib/validation'
+import { getBackend } from '../services/backend'
 import type { AvatarSpec } from '../types'
 import { ArrowRight } from 'lucide-react'
 
@@ -18,6 +19,20 @@ export default function DetailsPage() {
   const [klass, setKlass] = useState(identity?.classLabel ?? '')
   const [avatar, setAvatar] = useState<AvatarSpec>(identity?.avatar ?? DEFAULT_AVATAR)
   const [errors, setErrors] = useState<{ name?: string; klass?: string }>({})
+  const [lifetimeSeconds, setLifetimeSeconds] = useState<number | undefined>(undefined)
+
+  // Returning students can wear their earned gear here too.
+  useEffect(() => {
+    if (!identity) return
+    let alive = true
+    getBackend()
+      .getMyStudyStats(identity)
+      .then((s) => alive && setLifetimeSeconds(s.lifetimeSeconds))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [identity?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const listId = useMemo(() => `classes-${Math.random().toString(36).slice(2, 8)}`, [])
 
@@ -82,7 +97,7 @@ export default function DetailsPage() {
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-inksoft">Pick your look</p>
               <div className="rounded-2xl border border-wood/15 bg-white/50 p-4">
-                <AvatarPicker value={avatar} onChange={setAvatar} />
+                <AvatarPicker value={avatar} onChange={setAvatar} lifetimeSeconds={lifetimeSeconds} />
               </div>
             </div>
 
